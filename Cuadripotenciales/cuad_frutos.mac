@@ -1,0 +1,24 @@
+/* Potencial de Frutos                          */
+/* Parámetros: m, q (masa cuadrupolar), a,      */
+/*             qe (carga eléctrica), mu (dipolo)*/
+
+declare(m, real)$
+declare(q, real)$
+declare(a, real)$
+declare(qe, real)$
+declare(mu, real)$
+
+P2:  (3 * cos(q2)^2 - 1) / 2$
+P3:  (1/2) * (5 * cos(q2)^3 - 3 * cos(q2))$
+rh:  sqrt(q1^2 + a^2 * cos(q2)^2)$
+
+At:  ( - qe * q1 / rh^2
+       - (1/5) * q * qe * (-5*P2 + 2*P3) / q1^4
+       - m * a * mu * cos(q2)^2 / q1^4
+     )$
+Ar:   0$
+Ath:  0$
+Aphi: (- a * At * sin(q2)^2 + (  mu / q1 + (3/2) * m * mu / q1^2
+         - (1/4) * mu * q * (P2 + 1) / q1^4) * sin(q2)^2)$
+
+A: [At, Ar, Ath, Aphi]$

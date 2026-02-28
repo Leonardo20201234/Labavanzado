@@ -1,0 +1,10 @@
+/* Potencial dipolo magnético: A_phi = mu * sin²(θ) / r */
+/* mu > 0 apunta en +z                                   */
+
+declare(mu, real)$
+At:   0$
+Ar:   0$
+Ath:  0$
+Aphi: mu * sin(q2)^2 / q1$
+
+A: [At, Ar, Ath, Aphi]$
