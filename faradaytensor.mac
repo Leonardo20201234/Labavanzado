@@ -1,0 +1,75 @@
+load("Metricas/metrica_mink.mac")$
+load("Cuadripotenciales/cuad_dipolo.mac")$
+
+/*--- Maxima-to-SymPy string substitutions ---*/
+to_sp(expr) := block([s: string(expr)],
+  for pair in [
+    ["%e",   "sp.E"   ], ["^",    "**"     ],
+    ["sin",  "sp.sin" ], ["cos",  "sp.cos" ], ["tan",  "sp.tan" ],
+    ["asin", "sp.asin"], ["acos", "sp.acos"], ["atan", "sp.atan"],
+    ["exp",  "sp.exp" ], ["log",  "sp.log" ], ["sqrt", "sp.sqrt"],
+    ["%pi",  "sp.pi"  ]
+  ] do s: ssubst(pair[2], pair[1], s),
+  return(s)
+)$
+
+
+n:     length(coords)$
+g_inv: invert(g)$
+
+F1: zeromatrix(n, n)$
+for mu: 1 thru n do
+  for nu: 1 thru n do
+    F1[mu, nu]: ratsimp(diff(A[nu], coords[mu]) - diff(A[mu], coords[nu]))$
+
+/*--- Contravariant Faraday tensor F^mu_nu = g^mu_rho F_rho_nu ---*/
+F2: ratsimp(g_inv . F1)$
+
+/*--- Write faraday.py ---*/
+with_stdout("faraday.py",
+
+  printf(true, "import sympy as sp~%"),
+  printf(true, "import numpy as np~%~%"),
+  printf(true, "q0, q1, q2, q3 = sp.symbols('q0 q1 q2 q3')~%~%"),
+  printf(true, "mu, m, a, q, qe = sp.symbols('mu m a q qe', real=True)~%~%"),
+
+
+/* Cuadripotential */
+printf(true, "cuadripotencial = sp.Matrix([["),
+for mu: 1 thru n do (
+  printf(true, "~a", to_sp(A[mu])),
+  if mu < n then printf(true, ", ")
+),
+printf(true, "]])~%~%"),
+  
+  /* Covariant F_mu_nu */
+  printf(true, "F1 = sp.Matrix([~%"),
+  for mu: 1 thru n do (
+    printf(true, "    ["),
+    for nu: 1 thru n do (
+      printf(true, "~a", to_sp(F1[mu, nu])),
+      if nu < n then printf(true, ", ")
+    ),
+    printf(true, if mu < n then "],~%" else "]~%")
+  ),
+  printf(true, "])~%~%"),
+
+  /* Contravariant F^mu_nu */
+  printf(true, "F2 = sp.Matrix([~%"),
+  for mu: 1 thru n do (
+    printf(true, "    ["),
+    for nu: 1 thru n do (
+      printf(true, "~a", to_sp(F2[mu, nu])),
+      if nu < n then printf(true, ", ")
+    ),
+    printf(true, if mu < n then "],~%" else "]~%")
+  ),
+  printf(true, "])~%")
+
+)$
+
+/*--- Console output ---*/
+print("Covariant Faraday tensor F_mu_nu:")$
+print(F1)$
+print("Contravariant Faraday tensor F^mu_nu:")$
+print(F2)$

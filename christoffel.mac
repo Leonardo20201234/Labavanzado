@@ -1,0 +1,92 @@
+/*-----------------------------------------------------------------------------
+  Generator of Christoffel symbols for a given metric.
+  Reads the metric from "Metricas/metrica_mink.mac", which must define:
+    - coords : list of coordinate symbols
+    - g      : covariant metric matrix g[mu,nu]
+  Output file:
+    christoffel.py : metric and Christoffel symbols as SymPy expressions
+-----------------------------------------------------------------------------*/
+
+load("Metricas/metrica_mink.mac")$
+
+/*--- Maxima-to-SymPy string substitutions ---*/
+to_sp(expr) := block([s: string(expr)],
+  for pair in [
+    ["%e",   "sp.E"   ], ["^",    "**"     ],
+    ["sin",  "sp.sin" ], ["cos",  "sp.cos" ], ["tan",  "sp.tan" ],
+    ["asin", "sp.asin"], ["acos", "sp.acos"], ["atan", "sp.atan"],
+    ["exp",  "sp.exp" ], ["log",  "sp.log" ], ["sqrt", "sp.sqrt"],
+    ["%pi",  "sp.pi"  ]
+  ] do s: ssubst(pair[2], pair[1], s),
+  return(s)
+)$
+
+/*--- Setup ---*/
+n:     length(coords)$
+g_inv: invert(g)$
+
+/*--- Compute Christoffel symbols Gamma^sigma_mu_nu ---*/
+G: makelist(makelist(makelist(0, n), n), n)$
+
+for sigma: 1 thru n do
+  for mu: 1 thru n do
+    for nu: 1 thru n do
+      G[sigma][mu][nu]: ratsimp(
+        sum(
+          (1/2) * g_inv[sigma, rho] * (
+            diff(g[nu,  rho], coords[mu]) +
+            diff(g[mu,  rho], coords[nu]) -
+            diff(g[mu,  nu ], coords[rho])
+          ),
+          rho, 1, n
+        )
+      )$
+
+/*--- Write christoffel.py ---*/
+with_stdout("christoffel.py",
+
+  printf(true, "import sympy as sp~%"),
+  printf(true, "import numpy as np~%~%"),
+  printf(true, "q0, q1, q2, q3 = sp.symbols('q0 q1 q2 q3')~%~%"),
+  printf(true, "mu, m, a, q, qe = sp.symbols('mu m a q qe', real=True)~%~%"),
+
+  /* Metric */
+  printf(true, "metric = sp.Matrix([~%"),
+  for mu: 1 thru n do (
+    printf(true, "    ["),
+    for nu: 1 thru n do (
+      printf(true, "~a", to_sp(g[mu, nu])),
+      if nu < n then printf(true, ", ")
+    ),
+    printf(true, if mu < n then "],~%" else "]~%")
+  ),
+  printf(true, "])~%~%"),
+
+  /* Christoffel symbols */
+  printf(true, "Gamma = [~%"),
+  for sigma: 1 thru n do (
+    printf(true, "    # sigma = ~a (~a)~%", sigma-1, coords[sigma]),
+    printf(true, "    sp.Matrix([~%"),
+
+    /* Column widths for alignment */
+    col_w: makelist(0, n),
+    for mu: 1 thru n do
+      for nu: 1 thru n do block([len: slength(to_sp(G[sigma][mu][nu]))],
+        if len > col_w[nu] then col_w[nu]: len
+      ),
+
+    for mu: 1 thru n do (
+      printf(true, "        ["),
+      for nu: 1 thru n do block([s: to_sp(G[sigma][mu][nu])],
+        printf(true, "~a", s),
+        for k: 1 thru col_w[nu] - slength(s) do printf(true, " "),
+        if nu < n then printf(true, ", ")
+      ),
+      printf(true, if mu < n then "],~%" else "]~%")
+    ),
+
+    printf(true, if sigma < n then "    ]),~%" else "    ])~%")
+  ),
+  printf(true, "]~%")
+
+)$
