@@ -1,18 +1,17 @@
 load("Metricas/metrica_mink.mac")$
 load("Cuadripotenciales/cuad_dipolo.mac")$
 
-/*--- Maxima-to-SymPy string substitutions ---*/
-to_sp(expr) := block([s: string(expr)],
+/*--- Maxima-to-NumPy string substitutions ---*/
+to_np(expr) := block([s: string(expr)],
   for pair in [
-    ["%e",   "sp.E"   ], ["^",    "**"     ],
-    ["sin",  "sp.sin" ], ["cos",  "sp.cos" ], ["tan",  "sp.tan" ],
-    ["asin", "sp.asin"], ["acos", "sp.acos"], ["atan", "sp.atan"],
-    ["exp",  "sp.exp" ], ["log",  "sp.log" ], ["sqrt", "sp.sqrt"],
-    ["%pi",  "sp.pi"  ]
+    ["%e",   "np.e"      ], ["^",    "**"        ],
+    ["sin",  "np.sin"    ], ["cos",  "np.cos"    ], ["tan",  "np.tan"    ],
+    ["asin", "np.arcsin" ], ["acos", "np.arccos" ], ["atan", "np.arctan" ],
+    ["exp",  "np.exp"    ], ["log",  "np.log"    ], ["sqrt", "np.sqrt"   ],
+    ["%pi",  "np.pi"     ]
   ] do s: ssubst(pair[2], pair[1], s),
   return(s)
 )$
-
 
 n:     length(coords)$
 g_inv: invert(g)$
@@ -28,43 +27,45 @@ F2: ratsimp(g_inv . F1)$
 /*--- Write faraday.py ---*/
 with_stdout("faraday.py",
 
-  printf(true, "import sympy as sp~%"),
   printf(true, "import numpy as np~%~%"),
-  printf(true, "q0, q1, q2, q3 = sp.symbols('q0 q1 q2 q3')~%~%"),
-  printf(true, "mu, m, a, q, qe = sp.symbols('mu m a q qe', real=True)~%~%"),
 
-
-/* Cuadripotential */
-printf(true, "cuadripotencial = sp.Matrix([["),
-for mu: 1 thru n do (
-  printf(true, "~a", to_sp(A[mu])),
-  if mu < n then printf(true, ", ")
-),
-printf(true, "]])~%~%"),
-  
-  /* Covariant F_mu_nu */
-  printf(true, "F1 = sp.Matrix([~%"),
+  /* Cuadripotencial */
+  printf(true, "# Cuadripotencial (lista de componentes A_mu)~%"),
+  printf(true, "def cuadripotencial(q0, q1, q2, q3, mu, m, a, q, qe):~%"),
+  printf(true, "    return np.array([~%"),
   for mu: 1 thru n do (
-    printf(true, "    ["),
+    printf(true, "        ~a", to_np(A[mu])),
+    if mu < n then printf(true, ",~%") else printf(true, "~%")
+  ),
+  printf(true, "    ])~%~%"),
+
+  /* Covariant F_mu_nu */
+  printf(true, "# Tensor de Faraday covariante F_mu_nu~%"),
+  printf(true, "def F1_tensor(q0, q1, q2, q3, mu, m, a, q, qe):~%"),
+  printf(true, "    return np.array([~%"),
+  for mu: 1 thru n do (
+    printf(true, "        ["),
     for nu: 1 thru n do (
-      printf(true, "~a", to_sp(F1[mu, nu])),
+      printf(true, "~a", to_np(F1[mu, nu])),
       if nu < n then printf(true, ", ")
     ),
-    printf(true, if mu < n then "],~%" else "]~%")
+    if mu < n then printf(true, "],~%") else printf(true, "]~%")
   ),
-  printf(true, "])~%~%"),
+  printf(true, "    ])~%~%"),
 
   /* Contravariant F^mu_nu */
-  printf(true, "F2 = sp.Matrix([~%"),
+  printf(true, "# Tensor de Faraday contravariante F^mu_nu~%"),
+  printf(true, "def F2_tensor(q0, q1, q2, q3, mu, m, a, q, qe):~%"),
+  printf(true, "    return np.array([~%"),
   for mu: 1 thru n do (
-    printf(true, "    ["),
+    printf(true, "        ["),
     for nu: 1 thru n do (
-      printf(true, "~a", to_sp(F2[mu, nu])),
+      printf(true, "~a", to_np(F2[mu, nu])),
       if nu < n then printf(true, ", ")
     ),
-    printf(true, if mu < n then "],~%" else "]~%")
+    if mu < n then printf(true, "],~%") else printf(true, "]~%")
   ),
-  printf(true, "])~%")
+  printf(true, "    ])~%")
 
 )$
 
