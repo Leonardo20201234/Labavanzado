@@ -1,0 +1,4 @@
+El menú debería de funcionar al intercambiar las entradas de datos corresponientes
+Verifique que todo esté en orden, tanto el código como los valores preestablecidos 
+
+Pd: Me cago en su existencia XD
