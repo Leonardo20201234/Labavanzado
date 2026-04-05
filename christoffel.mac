@@ -1,27 +1,17 @@
-/*-----------------------------------------------------------------------------
-  Generator of Christoffel symbols for a given metric.
-  Reads the metric from "Metricas/metrica_mink.mac", which must define:
-    - coords : list of coordinate symbols
-    - g      : covariant metric matrix g[mu,nu]
-  Output file:
-    christoffel.py : metric and Christoffel symbols as NumPy expressions
------------------------------------------------------------------------------*/
+load("Metricas/metrica_frutos.mac")$
 
-load("Metricas/metrica_mink.mac")$
-
-/*--- Maxima-to-NumPy string substitutions ---*/
-to_np(expr) := block([s: string(expr)],
+/*--- Maxima-to-JAX string substitutions ---*/
+to_jax(expr) := block([s: string(expr)],
   for pair in [
-    ["%e",   "np.e"      ], ["^",    "**"        ],
-    ["sin",  "np.sin"    ], ["cos",  "np.cos"    ], ["tan",  "np.tan"    ],
-    ["asin", "np.arcsin" ], ["acos", "np.arccos" ], ["atan", "np.arctan" ],
-    ["exp",  "np.exp"    ], ["log",  "np.log"    ], ["sqrt", "np.sqrt"   ],
-    ["%pi",  "np.pi"     ]
+    ["%e",   "jnp.e"      ], ["^",    "**"        ],
+    ["sin",  "jnp.sin"    ], ["cos",  "jnp.cos"    ], ["tan",  "jnp.tan"    ],
+    ["asin", "jnp.arcsin" ], ["acos", "jnp.arccos" ], ["atan", "jnp.arctan" ],
+    ["exp",  "jnp.exp"    ], ["log",  "jnp.log"    ], ["sqrt", "jnp.sqrt"   ],
+    ["%pi",  "jnp.pi"     ]
   ] do s: ssubst(pair[2], pair[1], s),
   return(s)
 )$
 
-/*--- Setup ---*/
 n:     length(coords)$
 g_inv: invert(g)$
 
@@ -45,16 +35,16 @@ for sigma: 1 thru n do
 /*--- Write christoffel.py ---*/
 with_stdout("christoffel.py",
 
-  printf(true, "import numpy as np~%~%"),
+   printf(true, "import jax.numpy as jnp~%~%"),
 
-  /* Metric */
+   /* Metric */
   printf(true, "# Metrica covariante g_mu_nu~%"),
   printf(true, "def metric(q0, q1, q2, q3, mu, m, a, q, qe):~%"),
-  printf(true, "    return np.array([~%"),
+  printf(true, "    return jnp.array([~%"),
   for mu: 1 thru n do (
     printf(true, "        ["),
     for nu: 1 thru n do (
-      printf(true, "~a", to_np(g[mu, nu])),
+      printf(true, "~a", to_jax(g[mu, nu])),
       if nu < n then printf(true, ", ")
     ),
     if mu < n then printf(true, "],~%") else printf(true, "]~%")
@@ -68,18 +58,18 @@ with_stdout("christoffel.py",
   printf(true, "    Gamma = []~%"),
   for sigma: 1 thru n do (
     printf(true, "    # sigma = ~a (~a)~%", sigma-1, coords[sigma]),
-    printf(true, "    Gamma.append(np.array([~%"),
+    printf(true, "    Gamma.append(jnp.array([~%"),
 
     /* Column widths for alignment */
     col_w: makelist(0, n),
     for mu: 1 thru n do
-      for nu: 1 thru n do block([len: slength(to_np(G[sigma][mu][nu]))],
+      for nu: 1 thru n do block([len: slength(to_jax(G[sigma][mu][nu]))],
         if len > col_w[nu] then col_w[nu]: len
       ),
 
     for mu: 1 thru n do (
       printf(true, "        ["),
-      for nu: 1 thru n do block([s: to_np(G[sigma][mu][nu])],
+      for nu: 1 thru n do block([s: to_jax(G[sigma][mu][nu])],
         printf(true, "~a", s),
         for k: 1 thru col_w[nu] - slength(s) do printf(true, " "),
         if nu < n then printf(true, ", ")

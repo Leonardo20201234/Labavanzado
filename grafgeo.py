@@ -1,182 +1,247 @@
+import jax
+import jax.numpy as jnp
+from jax import jit, vmap
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from numba import njit
-from christoffel import christoffel, metric
+import plotly.graph_objects as go
+from christoffel import christoffel
+from christoffel import metric
 from faraday import F2_tensor
 
-# ── Parámetros del sistema ────────────────────────────────────────────────────
-m   = 1     # masa
-a   = 1   # parámetro de frutos / cuad_frutos
-mu  = 1     # parámetro de cuad_dipolo / cuad_frutos
-q   = 0   # parámetro de frutos / cuad_frutos
-qe  = 1     # carga eléctrica
-qm  = qe/m  # cociente carga/masa
-r_min = 2*m   # para métricas distintas a mink
+# ── Parámetros ────────────────────────────────────────────────────
+m   = 1.0
+a   = 0.7
+mu  = 0.21
+q   = 0.3
+qe  = 7.0e-4
+r_min = 2*m
 
-# ── Helpers para obtener G y F2 como arrays numpy ────────────────────────────
-def get_G_F2(q0, q1, q2, q3):
-    """Devuelve G (4,4,4) y F2 (4,4) como arrays numpy contiguos."""
-    params = (q0, q1, q2, q3, mu, m, a, q, qe)
-    G_list = christoffel(*params)
-    G  = np.array([np.array(Gi, dtype=np.float64) for Gi in G_list])
-    F2 = np.array(F2_tensor(*params), dtype=np.float64)
-    return G, F2
+es_foton = False #True para el caso de fotones, False para partículas masivas
 
-def get_metric(q0, q1, q2, q3):
-    return np.array(metric(q0, q1, q2, q3, mu, m, a, q, qe), dtype=np.float64)
+if es_foton:
+    m1 = 0.0
+    qm = 0.0
+else:
+    m1 = 1e-6
+    qm = qe / m1
 
-# ── Núcleos compilados con Numba ──────────────────────────────────────────────
-@njit(cache=True)
-def _aceleracion(vel, G, F2, qm):
-    acc = np.zeros(4)
-    for i in range(4):
-        for j in range(4):
-            acc[i] += qm * F2[i, j] * vel[j]
-            for k in range(4):
-                acc[i] -= G[i, j, k] * vel[j] * vel[k]
-    return acc
+@jit
+def christoffel_jax(pos):
+    raw = christoffel(pos[0], pos[1], pos[2], pos[3], mu, m, a, q, qe)
+    return jnp.stack(raw)
 
+@jit
+def F2_jax(pos):
+    return F2_tensor(pos[0], pos[1], pos[2], pos[3], mu, m, a, q, qe)
 
-@njit(cache=True)
-def _rk4_step(pos, vel, G, F2, qm, h):
+# ── Normalización ──────────────────────────────────────────────────
+
+@jit
+def norm_vt(pos, vel_espacial, m_particula):
+    r, th, phi = pos[1], pos[2], pos[3]
+    vr, vth, vphi = vel_espacial
+
+    g = metric(pos[0], r, th, phi, mu, m, a, q, qe)
+
+    gtt  = g[0, 0]
+    grr  = g[1, 1]
+    gth  = g[2, 2]
+    gph  = g[3, 3]
+    gtph = g[0, 3]
+
+    A = gtt
+    B = 2.0 * gtph * vphi
+    C = grr * vr**2 + gth * vth**2 + gph * vphi**2 + m_particula**2
+
+    discriminante = B**2 - 4.0 * A * C
+    vt = (-B - jnp.sqrt(discriminante)) / (2.0 * A)
+
+    return vt
+
+# ── Aceleración y paso RK4 ───────────────────────────────────────────────────
+
+@jit
+def aceleracion(vel, G, F2):
+    lorentz  = jnp.einsum('ij,j->i', F2, vel) * qm
+    geodesic = jnp.einsum('ijk,j,k->i', G, vel, vel)
+    return lorentz - geodesic
+
+@jit
+def rk4_step(pos, vel, h):
     def deriv(p, v):
-        acc = _aceleracion(v, G, F2, qm)
-        return v, acc
+        return v, aceleracion(v, christoffel_jax(p), F2_jax(p))
 
-    vk1, ak1 = deriv(pos,           vel)
-    vk2, ak2 = deriv(pos + h/2*vk1, vel + h/2*ak1)
-    vk3, ak3 = deriv(pos + h/2*vk2, vel + h/2*ak2)
-    vk4, ak4 = deriv(pos + h*vk3,   vel + h*ak3)
+    vk1, ak1 = deriv(pos,            vel)
+    vk2, ak2 = deriv(pos + h/2*vk1,  vel + h/2*ak1)
+    vk3, ak3 = deriv(pos + h/2*vk2,  vel + h/2*ak2)
+    vk4, ak4 = deriv(pos + h*vk3,    vel + h*ak3)
 
     pos_new = pos + (h/6) * (vk1 + 2*vk2 + 2*vk3 + vk4)
     vel_new = vel + (h/6) * (ak1 + 2*ak2 + 2*ak3 + ak4)
     return pos_new, vel_new
 
+# ── Integrador completo ──────────────────────────────────────────────────────
 
-@njit(cache=True)
-def a_cartesianas_njit(Sol):
-    n = Sol.shape[0]
-    x = np.empty(n)
-    y = np.empty(n)
-    z = np.empty(n)
-    for i in range(n):
-        r     = Sol[i, 1]
-        theta = Sol[i, 2]
-        phi   = Sol[i, 3]
-        x[i] = r * np.sin(theta) * np.cos(phi)
-        y[i] = r * np.sin(theta) * np.sin(phi)
-        z[i] = r * np.cos(theta)
-    return x, y, z
+def make_integrador(N, h):
+    @jit
+    def integrar_rayo(Y0):
+        def paso(carry, _):
+            pos, vel, activo = carry
+            pos_new, vel_new = rk4_step(pos, vel, h)
 
-# ── Integrador RK4 con G y F2 actualizados en cada paso ──────────────────────
-def rk4(Y0, N, h, r_min, r_max):
-    Sol = np.zeros((N, 8))
-    Sol[0] = Y0
-    pos = Y0[:4].copy()
-    vel = Y0[4:].copy()
+            sigue_vivo = (
+                activo &
+                (pos_new[1] > r_min + 0.1) &
+                jnp.isfinite(pos_new[1])
+            )
 
-    for i in range(N - 1):
-        r = pos[1]
-        if r <= r_min + 0.1 or r > r_max or not np.isfinite(r):
-            Sol[i+1:] = Sol[i]
-            break
+            pos_final = jnp.where(sigue_vivo, pos_new, pos)
+            vel_final = jnp.where(sigue_vivo, vel_new, vel)
 
-        G, F2 = get_G_F2(*pos)
-        pos, vel = _rk4_step(pos, vel, G, F2, qm, h)
-        Sol[i+1, :4] = pos
-        Sol[i+1, 4:] = vel
+            return (pos_final, vel_final, sigue_vivo), jnp.concatenate([pos_final, vel_final])
 
-    return Sol
+        activo_ini = jnp.array(True)
+        _, traj = jax.lax.scan(paso, (Y0[:4], Y0[4:], activo_ini), None, length=N)
+        return traj
 
+    return jit(vmap(integrar_rayo))
 
-def normalizar_vt(r_ini, theta_ini, vr0, vth0, vphi0, phi_ini, masa=1.0):
-    """Calcula u^t para que g_{μν} u^μ u^ν = -masa²."""
-    g = get_metric(0.0, r_ini, theta_ini, phi_ini)
-    espacial = g[1,1]*vr0**2 + g[2,2]*vth0**2 + g[3,3]*vphi0**2
-    cociente = (-masa**2 - espacial) / g[0,0]
-    return np.sqrt(cociente) if cociente >= 0 else 1.0
+# ── Configuración de Rayos ───────────────────────────────────────────────────
 
-# ── Warm-up de Numba ──────────────────────────────────────────────────────────
-print("Compilando kernels Numba...")
-_dG  = np.zeros((4, 4, 4))
-_dF2 = np.zeros((4, 4))
-_dv  = np.zeros(4)
-_aceleracion(_dv, _dG, _dF2, 1.0)
-_rk4_step(np.zeros(4), np.zeros(4), _dG, _dF2, 1.0, 0.1)
-a_cartesianas_njit(np.zeros((2, 8)))
-print("Listo.\n")
-
-# ── Parámetros de integración ─────────────────────────────────────────────────
-theta0  = np.pi / 2
-vtheta0 = 0.0
-N       = 3000
-tfinal  = 100
+theta0  = np.deg2rad(90)
+N       = 12000
+tfinal  = 800
 h       = tfinal / N
-r0      = 60.0
-n_rayos = 80
-y_rango = (-10, 10)
-y_min   = 0.5
+r0      = 40.0
+z0      = 2.0
+n_rayos = 100
+y_rango = (-20, 20)
 
-# ── Configuración de la cámara ────────────────────────────────────────────────
-ELEVACION = 30
-AZIMUT    = 60
 
-# ── Trazado de rayos ──────────────────────────────────────────────────────────
-fig = plt.figure(figsize=(9, 9))
-ax  = fig.add_subplot(111, projection='3d')
-ax.view_init(elev=ELEVACION, azim=AZIMUT)
+Y0_list  = []
+y_values = np.linspace(y_rango[0], y_rango[1], n_rayos)
 
-for y0 in np.linspace(y_rango[0], y_rango[1], n_rayos):
-    if abs(y0) < y_min:
-        continue
+for y0 in y_values:
+    r_ini     = np.sqrt(r0**2 + y0**2 + z0**2)  # ← agrega z_plano
+    theta_ini = np.arccos(np.clip(z0/ r_ini, -1.0, 1.0))  # ← calculado, no fijo
+    phi_ini   = np.pi - np.arctan2(y0, r0)
 
-    r_ini   = np.sqrt(r0**2 + y0**2)
-    phi_ini = np.pi - np.arctan2(y0, r0)
-    vr0     =  np.cos(phi_ini)
-    vphi0   = -np.sin(phi_ini) / r_ini
+    # Velocidad cartesiana +x → esféricas con el jacobiano exacto
+    sin_th = np.sin(theta_ini)
+    cos_th = np.cos(theta_ini)
+    sin_ph = np.sin(phi_ini)
+    cos_ph = np.cos(phi_ini)
 
-    vt0 = normalizar_vt(r_ini, theta0, vr0, vtheta0, vphi0, phi_ini)
-    Y0  = np.array([0.0, r_ini, theta0, phi_ini, vt0, vr0, vtheta0, vphi0])
+    vr0   =  sin_th*cos_ph
+    vth0  = (cos_th*cos_ph) / r_ini   # ← ya no es 0, mantiene z constante
+    vphi0 = -sin_ph / (r_ini * np.abs(sin_th) + 1e-10)
 
-    Sol     = rk4(Y0, N, h, r_min, 3*r0)
-    mascara = (Sol[:, 1] > r_min + 0.1) & np.isfinite(Sol[:, 1])
+    pos_ini = jnp.array([0.0, r_ini, theta_ini, phi_ini])
+    vel_esp = jnp.array([vr0, vth0, vphi0])
+
+    vt0 = norm_vt(pos_ini, vel_esp, m1)
+    Y0_list.append([0.0, r_ini, theta_ini, phi_ini, float(vt0), vr0, vth0, vphi0])
+
+Y0_batch = jnp.array(Y0_list)
+
+# ── Ejecución ────────────────────────────────────────────────────────────────
+
+integrar_todos = make_integrador(N, h)
+print("Calculando trayectorias...")
+trayectorias = np.array(integrar_todos(Y0_batch))
+print(f"Trayectorias calculadas: {trayectorias.shape}")
+
+# ── Plot con Plotly ───────────────────────────────────────────────────────────
+
+ELEVACION = 10
+AZIMUT    = 30
+
+fig = go.Figure()
+
+# Rayos de luz
+for traj in trayectorias:
+    r     = traj[:, 1]
+    theta = traj[:, 2]
+    phi   = traj[:, 3]
+
+    mascara = (r > 1e-1) & np.isfinite(r)
     if mascara.sum() < 2:
         continue
 
-    x, y, z = a_cartesianas_njit(Sol[mascara])
-    ax.plot(x, y, z, color='lime', lw=0.7, alpha=0.8)
+    x = r[mascara] * np.sin(theta[mascara]) * np.cos(phi[mascara])
+    y = r[mascara] * np.sin(theta[mascara]) * np.sin(phi[mascara])
+    z = r[mascara] * np.cos(theta[mascara])
 
-# ── Horizonte y fotósfera ─────────────────────────────────────────────────────
+    fig.add_trace(go.Scatter3d(
+        x=x, y=y, z=z,
+        mode='lines',
+        line=dict(color='lime', width=1),
+        opacity=0.8,
+        showlegend=False
+    ))
+
+# Esferas: horizonte de eventos y fotósfera
 if r_min > 0.1:
     u_s = np.linspace(0, 2*np.pi, 60)
     v_s = np.linspace(0, np.pi,   60)
-    sin_v = np.sin(v_s)
-    cos_v = np.cos(v_s)
 
-    for radio, color, alpha in [(r_min, 'black', 1.0), (1.5*r_min, 'orange', 0.08)]:
-        xs = radio * np.outer(np.cos(u_s), sin_v)
-        ys = radio * np.outer(np.sin(u_s), sin_v)
-        zs = radio * np.outer(np.ones_like(u_s), cos_v)
-        ax.plot_surface(xs, ys, zs, color=color, alpha=alpha, zorder=5)
+    for radio, color, opacity, nombre in [
+        (r_min,       'black',  1.0,  'Horizonte de eventos'),
+        (1.5 * r_min, 'orange', 0.15, 'Fotósfera'),
+    ]:
+        xs = radio * np.outer(np.cos(u_s), np.sin(v_s))
+        ys = radio * np.outer(np.sin(u_s), np.sin(v_s))
+        zs = radio * np.outer(np.ones_like(u_s), np.cos(v_s))
 
-# ── Estética ──────────────────────────────────────────────────────────────────
-lim = r0 * 0.5
-ax.set(xlim=(-lim, lim), ylim=(-lim, lim), zlim=(-lim, lim),
-       xlabel="x", ylabel="y", zlabel="z")
-ax.set_title(
-    f"Ray tracing geodésico + EM  |  Partícula masiva cargada\n"
-    f"elev={ELEVACION}°  azim={AZIMUT}°  θ₀={np.degrees(theta0):.1f}°  vθ₀={vtheta0}",
-    color='white'
+        fig.add_trace(go.Surface(
+            x=xs, y=ys, z=zs,
+            colorscale=[[0, color], [1, color]],
+            opacity=opacity,
+            showscale=False,
+            name=nombre,
+            showlegend=True
+        ))
+
+#Para visualización
+eye_x = np.cos(np.deg2rad(AZIMUT)) * np.cos(np.deg2rad(ELEVACION))
+eye_y = np.sin(np.deg2rad(AZIMUT)) * np.cos(np.deg2rad(ELEVACION))
+eye_z = np.sin(np.deg2rad(ELEVACION))
+
+lim = r0
+
+fig.update_layout(
+    title=dict(
+        text=(
+            f"Ray tracing JAX+vmap  |  {'Fotón' if es_foton else 'Partícula masiva cargada'}<br>"
+            f"elev={ELEVACION}°  azim={AZIMUT}°  θ₀={np.degrees(theta0):.1f}°"
+        ),
+        font=dict(color='white', size=14),
+        x=0.5
+    ),
+    scene=dict(
+        xaxis=dict(range=[-lim, lim], title='x', color='white',
+                   gridcolor='rgba(255,255,255,0.15)', zerolinecolor='rgba(255,255,255,0.3)'),
+        yaxis=dict(range=[-lim, lim], title='y', color='white',
+                   gridcolor='rgba(255,255,255,0.15)', zerolinecolor='rgba(255,255,255,0.3)'),
+        zaxis=dict(range=[-lim, lim], title='z', color='white',
+                   gridcolor='rgba(255,255,255,0.15)', zerolinecolor='rgba(255,255,255,0.3)'),
+        bgcolor='#0a0a0a',
+        camera=dict(eye=dict(x=eye_x, y=eye_y, z=eye_z))
+    ),
+    paper_bgcolor='#0a0a0a',
+    font=dict(color='white'),
+    legend=dict(font=dict(color='white'), bgcolor='rgba(0,0,0,0.5)'),
+    margin=dict(l=0, r=0, t=60, b=0)
 )
 
-fig.patch.set_facecolor('#0a0a0a')
-ax.set_facecolor('#0a0a0a')
-ax.tick_params(colors='white')
-for label in [ax.xaxis.label, ax.yaxis.label, ax.zaxis.label]:
-    label.set_color('white')
-ax.grid(True, linestyle='--', linewidth=0.3, alpha=0.3)
+# ── Exportar ──────────────────────────────────────────────────────────────────
 
-plt.tight_layout()
-plt.savefig("raytracing.png", dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
-plt.show()
+fig.write_html("raytracing_interactivo.html")
+print("Guardado: raytracing_interactivo.html")
+
+try:
+    fig.write_image("raytracing.png", width=900, height=900, scale=2)
+    print("Guardado: raytracing.png")
+except Exception:
+    print("Para exportar PNG instala kaleido:  pip install kaleido")
+
+fig.show()

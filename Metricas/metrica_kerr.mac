@@ -1,0 +1,34 @@
+/* ============================================
+   MÉTRICA DE KERR
+   Coordenadas de Boyer-Lindquist
+   ============================================ */
+   
+declare(m, real)$
+declare(a, real)$
+
+/* Coordenadas: [t, r, th, phi] */
+coords: [q0, q1, q2, q3]$
+t   : q0$
+r   : q1$
+th  : q2$
+phi : q3$
+
+/* ---- Funciones auxiliares ---- */
+rh2   : r^2 + a^2*cos(th)^2$
+delta : r^2 - 2*m*r + a^2$
+
+/* ---- Componentes de la métrica ---- */
+gtt   : -(1 - 2*m*r/rh2)$
+gtph  : -2*m*a*r*sin(th)^2/rh2$
+grr   : rh2/delta$
+gthth : rh2$
+gphph : (r^2 + a^2 + 2*m*a^2*r*sin(th)^2/rh2)*sin(th)^2$
+
+/* ---- Matriz métrica ---- */
+g: matrix(
+  [gtt,    0,     0,  gtph],
+  [  0,  grr,     0,     0],
+  [  0,    0, gthth,     0],
+  [gtph,   0,     0, gphph]
+)$
+

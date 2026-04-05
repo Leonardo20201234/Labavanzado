@@ -10,44 +10,43 @@ declare(mu, real)$
 
 /* Coordenadas */
 coords: [q0, q1, q2, q3]$
-
+t: q0$
+r: q1$
+th: q2$
+phi: q3$
 /* ---- Funciones auxiliares ---- */
 el: 0$
 
-P2:  (3*cos(q2)^2 - 1) / 2$
-P13: (5*P2 + 1) * sin(q2)$
-P3:  (1/2) * (5*cos(q2)^3 - 3*cos(q2))$
+P2: (3*(cos(th))^2 - 1 )/2$
+P13: (5*P2 + 1)*sin(th)$
+P3 : (1/2)*(5*cos(th)^3 - 3*cos(th))$
 
-psi: q*P2/q1^3 + 3*m*q*P2/q1^4$
+psi: q*P2/r^3 + 3*m*q*P2/r^4$
+ji: q*P2/r^3 + m*q/r^4*(- 1/3+ 5/3*P2 + 5*P2^2/3)+ q^2/r^6*(2/9 - 2/3*P2 - 7*P2^2/3 + 25*P2^3/9)$
 
-ji: ( q*P2/q1^3
-    + m*q/q1^4 * (-1/3 + (5/3)*P2 + 5*P2^2/3)
-    + q^2/q1^6 * (2/9 - (2/3)*P2 - 7*P2^2/3 + 25*P2^3/9) )$
+delta: r^2 - 2*m*r + a^2 + el^2$
+rh: sqrt(r^2 + a^2*cos(th)^2)$
 
-delta: q1^2 - 2*m*q1 + a^2 + el^2$
-rh:    sqrt(q1^2 + a^2*cos(q2)^2)$
+psi1mu: mu^2*cos(th)^2/(2*r^4)$
+psi2mu: mu^2*(19 - 7*P2)/(36*r^4)$
 
-psi1mu: mu^2 * cos(q2)^2 / (2*q1^4)$
-psi2mu: mu^2 * (19 - 7*P2) / (36*q1^4)$
+ji1mu: mu^2*(4*P2 - 15)/(8*r^4)$
+ji2mu: mu^2*(3 - P2)/(6*r^4)$
 
-ji1mu:  mu^2 * (4*P2 - 15) / (8*q1^4)$
-ji2mu:  mu^2 * (3 - P2) / (6*q1^4)$
+Wq: m*a*q*P13*sin(th)/r^4$
+Wmu: mu*el*sin(th)^2/r^2$
 
-Wq:  m*a*q*P13 * sin(q2) / q1^4$
-Wmu: mu*el*sin(q2)^2 / q1^2$
+pv: -exp(2*(psi1mu - psi))*(a^2*(sin(th))^2 - delta)/rh^2$
+pw: a*sin(th)^2*(delta-(r^2+a^2))/rh^2 + Wq + Wmu$
+px: rh^2*exp(2*(ji + ji1mu))/delta$
+py: rh^2*exp(2*(ji + ji2mu))$
+pz: exp(2*(psi+psi2mu))*sin(th)^2*((r^2 + a^2)^2 - a^2*delta*(sin(th))^2)/rh^2$
 
-/* ---- Componentes de la métrica ---- */
-pv: -exp(2*(psi1mu - psi)) * (a^2*sin(q2)^2 - delta) / rh^2$
-pw:  a*sin(q2)^2*(delta - (q1^2 + a^2)) / rh^2 + Wq + Wmu$
-px:  rh^2 * exp(2*(ji + ji1mu)) / delta$
-py:  rh^2 * exp(2*(ji + ji2mu))$
-pz: (exp(2*(psi + psi2mu)) * sin(q2)^2
-    * ((q1^2 + a^2)^2 - a^2*delta*sin(q2)^2) / rh^2)$
 
 /* ---- Métrica ---- */
 g: matrix(
   [-pv,   0,   0,  pw],
   [  0,  px,   0,   0],
   [  0,   0,  py,   0],
-  [  0,   0,   0,  pz]
+  [ pw,   0,   0,  pz]
 )$

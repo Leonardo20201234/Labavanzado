@@ -1,14 +1,14 @@
-load("Metricas/metrica_mink.mac")$
-load("Cuadripotenciales/cuad_dipolo.mac")$
+load("Metricas/metrica_frutos.mac")$
+load("Cuadripotenciales/cuad_frutos.mac")$
 
-/*--- Maxima-to-NumPy string substitutions ---*/
-to_np(expr) := block([s: string(expr)],
+/*--- Maxima-to-JAX string substitutions ---*/
+to_jax(expr) := block([s: string(expr)],
   for pair in [
-    ["%e",   "np.e"      ], ["^",    "**"        ],
-    ["sin",  "np.sin"    ], ["cos",  "np.cos"    ], ["tan",  "np.tan"    ],
-    ["asin", "np.arcsin" ], ["acos", "np.arccos" ], ["atan", "np.arctan" ],
-    ["exp",  "np.exp"    ], ["log",  "np.log"    ], ["sqrt", "np.sqrt"   ],
-    ["%pi",  "np.pi"     ]
+    ["%e",   "jnp.e"      ], ["^",    "**"        ],
+    ["sin",  "jnp.sin"    ], ["cos",  "jnp.cos"   ], ["tan",  "jnp.tan"    ],
+    ["asin", "jnp.arcsin" ], ["acos", "jnp.arccos"], ["atan", "jnp.arctan" ],
+    ["exp",  "jnp.exp"    ], ["log",  "jnp.log"   ], ["sqrt", "jnp.sqrt"   ],
+    ["%pi",  "jnp.pi"     ]
   ] do s: ssubst(pair[2], pair[1], s),
   return(s)
 )$
@@ -27,14 +27,14 @@ F2: ratsimp(g_inv . F1)$
 /*--- Write faraday.py ---*/
 with_stdout("faraday.py",
 
-  printf(true, "import numpy as np~%~%"),
+  printf(true, "import jax.numpy as jnp~%~%"),
 
   /* Cuadripotencial */
   printf(true, "# Cuadripotencial (lista de componentes A_mu)~%"),
   printf(true, "def cuadripotencial(q0, q1, q2, q3, mu, m, a, q, qe):~%"),
-  printf(true, "    return np.array([~%"),
+  printf(true, "    return jnp.array([~%"),
   for mu: 1 thru n do (
-    printf(true, "        ~a", to_np(A[mu])),
+    printf(true, "        ~a", to_jax(A[mu])),
     if mu < n then printf(true, ",~%") else printf(true, "~%")
   ),
   printf(true, "    ])~%~%"),
@@ -42,11 +42,11 @@ with_stdout("faraday.py",
   /* Covariant F_mu_nu */
   printf(true, "# Tensor de Faraday covariante F_mu_nu~%"),
   printf(true, "def F1_tensor(q0, q1, q2, q3, mu, m, a, q, qe):~%"),
-  printf(true, "    return np.array([~%"),
+  printf(true, "    return jnp.array([~%"),
   for mu: 1 thru n do (
     printf(true, "        ["),
     for nu: 1 thru n do (
-      printf(true, "~a", to_np(F1[mu, nu])),
+      printf(true, "~a", to_jax(F1[mu, nu])),
       if nu < n then printf(true, ", ")
     ),
     if mu < n then printf(true, "],~%") else printf(true, "]~%")
@@ -56,11 +56,11 @@ with_stdout("faraday.py",
   /* Contravariant F^mu_nu */
   printf(true, "# Tensor de Faraday contravariante F^mu_nu~%"),
   printf(true, "def F2_tensor(q0, q1, q2, q3, mu, m, a, q, qe):~%"),
-  printf(true, "    return np.array([~%"),
+  printf(true, "    return jnp.array([~%"),
   for mu: 1 thru n do (
     printf(true, "        ["),
     for nu: 1 thru n do (
-      printf(true, "~a", to_np(F2[mu, nu])),
+      printf(true, "~a", to_jax(F2[mu, nu])),
       if nu < n then printf(true, ", ")
     ),
     if mu < n then printf(true, "],~%") else printf(true, "]~%")
