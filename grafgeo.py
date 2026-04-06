@@ -10,9 +10,8 @@ from faraday import F2_tensor
 # ── Parámetros ────────────────────────────────────────────────────
 m   = 1.0
 a   = 0.7
-mu  = 0.21
-q   = 0.3
-qe  = 7.0e-4
+mu  = 1.0e-1
+q   = 1.0e-2
 r_min = 2*m
 
 es_foton = False #True para el caso de fotones, False para partículas masivas
@@ -20,8 +19,10 @@ es_foton = False #True para el caso de fotones, False para partículas masivas
 if es_foton:
     m1 = 0.0
     qm = 0.0
+    qe = 0.0
 else:
     m1 = 1e-6
+    qe  = 5.0e-4
     qm = qe / m1
 
 @jit
@@ -112,7 +113,7 @@ N       = 12000
 tfinal  = 800
 h       = tfinal / N
 r0      = 40.0
-z0      = 2.0
+z0      = 0.0
 n_rayos = 100
 y_rango = (-20, 20)
 
@@ -132,7 +133,7 @@ for y0 in y_values:
     cos_ph = np.cos(phi_ini)
 
     vr0   =  sin_th*cos_ph
-    vth0  = (cos_th*cos_ph) / r_ini   # ← ya no es 0, mantiene z constante
+    vth0  = 0   # ← ya no es 0, mantiene z constante
     vphi0 = -sin_ph / (r_ini * np.abs(sin_th) + 1e-10)
 
     pos_ini = jnp.array([0.0, r_ini, theta_ini, phi_ini])
@@ -211,8 +212,9 @@ lim = r0
 fig.update_layout(
     title=dict(
         text=(
-            f"Ray tracing JAX+vmap  |  {'Fotón' if es_foton else 'Partícula masiva cargada'}<br>"
-            f"elev={ELEVACION}°  azim={AZIMUT}°  θ₀={np.degrees(theta0):.1f}°"
+            f"Ray tracing 3D  |  {'Fotón' if es_foton else 'Partícula masiva cargada'}<br>"
+            f"Haz paralelo en x={r0:.0f}  |  {n_rayos} rayos  |  z={z0}  |  "
+            f"m={m} mpart={m1}  a={a}  μ={mu}  q={q}  qe={qe}"
         ),
         font=dict(color='white', size=14),
         x=0.5
