@@ -14,9 +14,9 @@ mu  = 1.0e-1
 q   = 1.0e-2
 r_min = 2*m
 
-es_foton = False #True para el caso de fotones, False para partículas masivas
+foton = False #True para el caso de fotones, False para partículas masivas
 
-if es_foton:
+if foton:
     m1 = 0.0
     qm = 0.0
     qe = 0.0
@@ -80,7 +80,7 @@ def rk4_step(pos, vel, h):
     vel_new = vel + (h/6) * (ak1 + 2*ak2 + 2*ak3 + ak4)
     return pos_new, vel_new
 
-# ── Integrador completo ──────────────────────────────────────────────────────
+# ── Integrador ──────────────────────────────────────────────────────
 
 def make_integrador(N, h):
     @jit
@@ -122,18 +122,17 @@ Y0_list  = []
 y_values = np.linspace(y_rango[0], y_rango[1], n_rayos)
 
 for y0 in y_values:
-    r_ini     = np.sqrt(r0**2 + y0**2 + z0**2)  # ← agrega z_plano
-    theta_ini = np.arccos(np.clip(z0/ r_ini, -1.0, 1.0))  # ← calculado, no fijo
+    r_ini     = np.sqrt(r0**2 + y0**2 + z0**2)  
+    theta_ini = np.arccos(np.clip(z0/ r_ini, -1.0, 1.0))  
     phi_ini   = np.pi - np.arctan2(y0, r0)
 
-    # Velocidad cartesiana +x → esféricas con el jacobiano exacto
     sin_th = np.sin(theta_ini)
     cos_th = np.cos(theta_ini)
     sin_ph = np.sin(phi_ini)
     cos_ph = np.cos(phi_ini)
 
     vr0   =  sin_th*cos_ph
-    vth0  = 0   # ← ya no es 0, mantiene z constante
+    vth0  = 0  
     vphi0 = -sin_ph / (r_ini * np.abs(sin_th) + 1e-10)
 
     pos_ini = jnp.array([0.0, r_ini, theta_ini, phi_ini])
@@ -212,7 +211,7 @@ lim = r0
 fig.update_layout(
     title=dict(
         text=(
-            f"Ray tracing 3D  |  {'Fotón' if es_foton else 'Partícula masiva cargada'}<br>"
+            f"Ray tracing 3D  |  {'Fotón' if foton else 'Partícula masiva cargada'}<br>"
             f"Haz paralelo en x={r0:.0f}  |  {n_rayos} rayos  |  z={z0}  |  "
             f"m={m} mpart={m1}  a={a}  μ={mu}  q={q}  qe={qe}"
         ),
@@ -235,15 +234,15 @@ fig.update_layout(
     margin=dict(l=0, r=0, t=60, b=0)
 )
 
-# ── Exportar ──────────────────────────────────────────────────────────────────
+# ── Html interactivo ──────────────────────────────────────────────────────────────────
 
-fig.write_html("raytracing_interactivo.html")
-print("Guardado: raytracing_interactivo.html")
+fig.write_html("raytracing.html")
+print("Guardado: raytracing.html")
 
 try:
     fig.write_image("raytracing.png", width=900, height=900, scale=2)
     print("Guardado: raytracing.png")
 except Exception:
-    print("Para exportar PNG instala kaleido:  pip install kaleido")
+    print("Para exportar PNG instalar kaleido")
 
 fig.show()
