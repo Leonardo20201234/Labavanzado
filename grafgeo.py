@@ -9,9 +9,9 @@ from faraday import F2_tensor
 
 # ── Parámetros ────────────────────────────────────────────────────
 m   = 1.0
-a   = 0.7
-mu  = 1.0e-1
-q   = 1.0e-2
+a   = 0.6
+mu  = 0.0
+q   = 0.0
 r_min = 2*m
 
 foton = False #True para el caso de fotones, False para partículas masivas
@@ -22,7 +22,7 @@ if foton:
     qe = 0.0
 else:
     m1 = 1e-6
-    qe  = 5.0e-4
+    qe  = 7.0e-4
     qm = qe / m1
 
 @jit
@@ -113,7 +113,7 @@ N       = 12000
 tfinal  = 800
 h       = tfinal / N
 r0      = 40.0
-z0      = 0.0
+z0      = 0.5
 n_rayos = 100
 y_rango = (-20, 20)
 
@@ -132,7 +132,7 @@ for y0 in y_values:
     cos_ph = np.cos(phi_ini)
 
     vr0   =  sin_th*cos_ph
-    vth0  = 0  
+    vth0  = 0.00023
     vphi0 = -sin_ph / (r_ini * np.abs(sin_th) + 1e-10)
 
     pos_ini = jnp.array([0.0, r_ini, theta_ini, phi_ini])
@@ -152,8 +152,8 @@ print(f"Trayectorias calculadas: {trayectorias.shape}")
 
 # ── Plot con Plotly ───────────────────────────────────────────────────────────
 
-ELEVACION = 10
-AZIMUT    = 30
+ELEVACION = 0
+AZIMUT    = 0
 
 fig = go.Figure()
 
@@ -174,15 +174,15 @@ for traj in trayectorias:
     fig.add_trace(go.Scatter3d(
         x=x, y=y, z=z,
         mode='lines',
-        line=dict(color='lime', width=1),
-        opacity=0.8,
+        line=dict(color='lime', width=1.5),   # línea un poco más gruesa
+        opacity=0.9,
         showlegend=False
     ))
 
 # Esferas: horizonte de eventos y fotósfera
 if r_min > 0.1:
-    u_s = np.linspace(0, 2*np.pi, 60)
-    v_s = np.linspace(0, np.pi,   60)
+    u_s = np.linspace(0, 2*np.pi, 120)   # más puntos = esferas más suaves
+    v_s = np.linspace(0, np.pi,   120)
 
     for radio, color, opacity, nombre in [
         (r_min,       'black',  1.0,  'Horizonte de eventos'),
@@ -198,49 +198,84 @@ if r_min > 0.1:
             opacity=opacity,
             showscale=False,
             name=nombre,
-            showlegend=True
+            showlegend=True,
+            lighting=dict(ambient=0.6, diffuse=0.8, specular=0.4, roughness=0.5),
         ))
 
-#Para visualización
 eye_x = np.cos(np.deg2rad(AZIMUT)) * np.cos(np.deg2rad(ELEVACION))
 eye_y = np.sin(np.deg2rad(AZIMUT)) * np.cos(np.deg2rad(ELEVACION))
 eye_z = np.sin(np.deg2rad(ELEVACION))
 
 lim = r0
 
+# ── Configuración de ejes (reutilizable) ─────────────────────────────────────
+
+def eje(titulo):
+    return dict(
+        title=dict(text=titulo, font=dict(size=14, color='white')),
+        range=[-lim, lim],
+        tickfont=dict(size=11, color='white'),
+        tickcolor='white',
+        ticklen=6,
+        showgrid=True,
+        gridcolor='rgba(255,255,255,0.20)',
+        gridwidth=1,
+        zeroline=True,
+        zerolinecolor='rgba(255,255,255,0.45)',
+        zerolinewidth=1.5,
+        showline=True,               # línea del eje siempre visible
+        linecolor='white',
+        linewidth=2,
+        showbackground=True,         # plano de fondo del eje
+        backgroundcolor='rgba(255,255,255,0.04)',
+        showticklabels=True,
+        nticks=9,
+        mirror=True,
+    )
+
 fig.update_layout(
     title=dict(
         text=(
             f"Ray tracing 3D  |  {'Fotón' if foton else 'Partícula masiva cargada'}<br>"
-            f"Haz paralelo en x={r0:.0f}  |  {n_rayos} rayos  |  z={z0}  |  "
-            f"m={m} mpart={m1}  a={a}  μ={mu}  q={q}  qe={qe}"
+            f"vtheta0={vth0:.5f}  |  {n_rayos} rayos  |  z={z0}  |  "
+            f"m={m}  mpart={m1}  a={a}  μ={mu}  q={q}  qe={qe}"
         ),
-        font=dict(color='white', size=14),
-        x=0.5
+        font=dict(color='white', size=15),
+        x=0.5,
+        y=0.97,
     ),
     scene=dict(
-        xaxis=dict(range=[-lim, lim], title='x', color='white',
-                   gridcolor='rgba(255,255,255,0.15)', zerolinecolor='rgba(255,255,255,0.3)'),
-        yaxis=dict(range=[-lim, lim], title='y', color='white',
-                   gridcolor='rgba(255,255,255,0.15)', zerolinecolor='rgba(255,255,255,0.3)'),
-        zaxis=dict(range=[-lim, lim], title='z', color='white',
-                   gridcolor='rgba(255,255,255,0.15)', zerolinecolor='rgba(255,255,255,0.3)'),
+        xaxis=eje('x'),
+        yaxis=eje('y'),
+        zaxis=eje('z'),
         bgcolor='#0a0a0a',
-        camera=dict(eye=dict(x=eye_x, y=eye_y, z=eye_z))
+        camera=dict(
+            eye=dict(x=eye_x, y=eye_y, z=eye_z),
+            projection=dict(type='perspective'),  # perspectiva más natural
+        ),
+        aspectmode='cube',       # ejes con la misma escala visual siempre
+        dragmode='orbit',
     ),
     paper_bgcolor='#0a0a0a',
-    font=dict(color='white'),
-    legend=dict(font=dict(color='white'), bgcolor='rgba(0,0,0,0.5)'),
-    margin=dict(l=0, r=0, t=60, b=0)
+    font=dict(color='white', family='Arial'),
+    legend=dict(
+        font=dict(color='white', size=12),
+        bgcolor='rgba(20,20,20,0.75)',
+        bordercolor='rgba(255,255,255,0.3)',
+        borderwidth=1,
+    ),
+    margin=dict(l=0, r=0, t=70, b=0),
+    width=1200,    # resolución del canvas HTML
+    height=900,
 )
 
-# ── Html interactivo ──────────────────────────────────────────────────────────────────
+# ── Html interactivo ──────────────────────────────────────────────────────────
 
 fig.write_html("raytracing.html")
 print("Guardado: raytracing.html")
 
 try:
-    fig.write_image("raytracing.png", width=900, height=900, scale=2)
+    fig.write_image("raytracing.png", width=9000, height=7000, scale=5)  
     print("Guardado: raytracing.png")
 except Exception:
     print("Para exportar PNG instalar kaleido")
